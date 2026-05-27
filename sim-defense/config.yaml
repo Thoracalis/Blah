@@ -1,0 +1,122 @@
+# ============================================================
+# Air Defense Resilience Simulator – Configuration
+# All values are FICTIONAL and for pedagogical purposes only.
+# ============================================================
+
+simulator:
+  seed: 42
+  episode_length: 150          # timesteps per episode
+  log_dir: "logs"
+  checkpoint_dir: "checkpoints"
+
+  # --- Graph ---
+  graph_file: "src/data/sweden_graph.json"
+
+  # --- Cascade ---
+  cascade:
+    supply_decay_rate: 0.05      # health lost per step when supply is cut
+    repair_rate: 0.08            # max health restored per step when repair action taken
+    dependency_threshold: 0.2    # below this health a dependency is considered broken
+
+  # --- Resources (defender) ---
+  resources:
+    total_protection_budget: 10.0   # arbitrary units distributed each step
+    max_air_defense_relocations: 2  # how many AD units can move per step
+    max_repair_actions: 3           # how many nodes can be repaired per step
+    sortie_pool: 20                 # total fighter sorties per episode
+    sortie_recharge_per_step: 1     # sorties replenished each step
+
+  # --- Threats (attacker) ---
+  threats:
+    wave_interval: 8             # steps between attacker waves
+    max_threats_per_wave: 6
+    spawn_region:                # approximate spawn box (east Baltic / north Finland)
+      lat_min: 59.0
+      lat_max: 68.0
+      lon_min: 26.0
+      lon_max: 32.0
+
+    # Threat type parameters  [fictional values]
+    types:
+      cruise_missile:
+        speed: 0.8               # grid-units per step
+        detection_difficulty: 0.3
+        damage_potential: 0.45
+        weight: 0.35             # spawn probability weight
+      ballistic_missile:
+        speed: 3.0
+        detection_difficulty: 0.6
+        damage_potential: 0.75
+        weight: 0.20
+      drone_swarm:
+        speed: 0.5
+        detection_difficulty: 0.4
+        damage_potential: 0.20
+        weight: 0.35
+        swarm_size: 4            # number of individual units in swarm
+      strike_aircraft:
+        speed: 2.0
+        detection_difficulty: 0.5
+        damage_potential: 0.60
+        weight: 0.10
+
+    # Attacker wave strategies (rotated / weighted randomly)
+    strategies:
+      - name: "saturation"       # many cheap threats targeting AD first
+        type_weights: [0.1, 0.05, 0.80, 0.05]
+        target_preference: ["air_defense", "radar"]
+      - name: "precision"        # ballistic + cruise against HVTs
+        type_weights: [0.50, 0.35, 0.05, 0.10]
+        target_preference: ["airbase", "c2", "ammo_depot"]
+      - name: "suppression"      # strike aircraft + cruise to suppress radars
+        type_weights: [0.40, 0.10, 0.10, 0.40]
+        target_preference: ["radar", "airbase"]
+
+  # --- Engagement ---
+  engagement:
+    base_intercept_probability:
+      cruise_missile:    0.72
+      ballistic_missile: 0.40
+      drone_swarm:       0.60
+      strike_aircraft:   0.55
+
+    # Multipliers (multiplicative on base prob)
+    radar_coverage_bonus: 0.15        # per radar node covering the engagement zone
+    saturation_penalty_per_threat: 0.07   # each extra simultaneous threat reduces prob
+    health_factor_weight: 0.6         # intercept_prob *= lerp(health_factor_weight, 1, health)
+
+    # Damage distribution when a threat gets through
+    miss_probability: 0.60
+    partial_hit_probability: 0.25     # remaining 0.15 = full hit
+    partial_damage_range: [0.10, 0.30]
+    full_damage_range:   [0.50, 0.80]
+
+  # --- Reward ---
+  reward:
+    defense_capacity_weight: 1.0      # sum(health * importance) all nodes
+    stop_rate_weight: 2.0             # fraction of threats intercepted this step
+    critical_damage_penalty: 5.0      # per critical node hit
+    resource_waste_penalty: 0.1       # penalty per unused protection unit
+    survival_bonus: 50.0              # if episode ends with >70% aggregate capacity
+    survival_threshold: 0.70
+
+# --- RL Training ---
+training:
+  total_timesteps: 1_000_000
+  n_envs: 8
+  learning_rate: 3.0e-4
+  n_steps: 2048
+  batch_size: 256
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  tensorboard_log: "logs/tb"
+
+# --- Server ---
+server:
+  host: "0.0.0.0"
+  port: 8000
+  simulation_speed: 1.0        # steps per second in live mode (0 = as fast as possible)
+  ws_state_every_n_steps: 1    # send WS update every N sim steps
